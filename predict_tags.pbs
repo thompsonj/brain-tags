@@ -1,0 +1,30 @@
+#!/bin/bash -l
+# declare a name for this job to be sample_job
+#PBS -N SUBJECT
+# request the queue (enter the possible names, if omitted, serial is the default)
+#PBS -q default
+# request 1 node and  request 2 processors per node
+#PBS -l nodes=1:ppn=2
+# request number of hours of wall time
+#PBS -l walltime=WALLTIME
+# mail is sent to you when the job starts and when it terminates or aborts
+#PBS -m bea
+# specify your email address
+#PBS -M jessicathompson00@gmail.com
+# By default, PBS scripts execute in your home directory, not the
+# directory from which they were submitted. The following line
+# places you in the directory from which the job was submitted.
+# run the program
+cd $PBS_O_WORKDIR
+
+dir=/global/data/casey/thompson/brain_tags
+
+if [ ! $subject ];then
+    echo "save brain features error: must specify subject"
+    subject = 1mar11sj
+fi
+if [ ! $k ];then
+    k = 5
+fi
+
+python $dir/brain_tags.py $subject $k
