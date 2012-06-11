@@ -1,0 +1,53 @@
+pytagcrawl
+----------
+A library for analyzing Artist and Track tags using the Last.FM API                       
+
+__version__ = '0.2'
+__author__ = 'Michael Casey'
+__copyright__ = "Copyright (C) 2010  Michael Casey, Dartmouth College, All Rights Reserved"
+__license__ = "gpl"
+__email__ = 'mcasey@dartmouth.edu'
+
+How to use this library in a python interpreter from this directory (copy and paste to run example):
+
+# import the tagcrawl library
+import pytagcrawl as T
+
+# load the top user tags from last.fm
+A = T.TrackTags("pandora","pandora") 
+
+# alternatively, lookup again using Last.FM Web Services API and save:
+# T.TrackList # the list of tracks that we will be processing, currently 176 seeded from Pandora
+# T.SeedArtists # the list of seed artists used to seed the Pandora stations
+# A = T.TrackTags() # a new empty instance
+# A.run_tag_crawler() # recursive Web crawl of top tags for T.TrackList using Last.FM Web Services
+# A.save_tracks("pandora") # save the crawl data as a cache
+# A.save_tracktags("pandora")
+# A = T.TrackTags("pandora","pandora") # build a new instance from the cached top tags
+
+# make indicator and weight matrices for top tags to all tracks
+# this takes a few minutes, lots of sorting and searching...
+# the tags are weighted 0..100 
+# weights were determined by collborative filtering among hundreds of millions of user tags (Last.FM)
+A._run_tag_tag_intersection()
+
+# using inter-document frequency concept from IR
+# sort top 25 user-weighted IDF tags and write as weighted per-track features
+A.weighted_top_tags_to_feature_vectors('pandora_top25_tags_features.txt',25)
+
+# That's it. You now have a feature matrix saved as a text file
+
+Dependencies:
+
+numpy - the python numerical processing library
+pylast - the last.fm Web services API
+
+pylast
+------
+
+A python interface to Last.fm. Try using the pydoc utility for help
+on usage.
+
+For more info check out the project's home page at http://code.google.com/p/pylast/
+or the mailing list http://groups.google.com/group/pylast/
+
