@@ -19,6 +19,8 @@ from scipy.spatial.distance import pdist
 from scipy.spatial.distance import squareform
 from scipy.stats import ttest_ind
 from scipy.stats import ttest_rel
+import matplotlib.pyplot as plt
+
 
 def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=None,stop_pre=None):
     """
@@ -50,12 +52,7 @@ def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=Non
         select_model=False
         pre_test = 0
     stop_train_pre=0
-    #D = 101 # ? choose empirically 
     # initialize matrices V and W at random with zero mean and std of 1/sqrt(d)
-    # W = np.array(np.zeros((D,Y,1)))
-    # V = np.array(np.zeros((D,d,1)))
-    # W[:,:,0] = np.array([[random.gauss(0, 1/np.sqrt(d)) for row in range(Y)] for col in range(D)])
-    # V[:,:,0] = np.array([[random.gauss(0, 1/np.sqrt(d)) for row in range(d)] for col in range(D)])
     W = np.matrix([[random.gauss(0, 1/np.sqrt(d)) for row in range(Y)] for col in range(D)])
     W_best = W
     V= np.matrix([[random.gauss(0, 1/np.sqrt(d)) for row in range(d)] for col in range(D)])
@@ -64,7 +61,7 @@ def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=Non
         pre_init,dist_init = validate(W,V,Xs_test,Ys_test,k)
         pre_test = [pre_init]
         dist_test = [dist_init]
-        print 'initial test precision: ',pre_test
+        print 'initial test precision: ',pre_test[-1]
         stop_pre = .95 # almost 100%, won't increase much more past this value, best test error is surely before we get this
     pre_tr, dist_tr=validate(W,V,Xs_train,Ys_train,k)
     pre_train = [pre_tr]
@@ -72,10 +69,6 @@ def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=Non
     best_test_dist = None
     print 'initial train precision:',pre_train[-1]
     c=0
-    #err = np.zeros((n,Y,Y,3)) # 3rd column indicates whether error is still improving or not
-    #count = np.zeros((n,Y,Y))
-    #increased = 0
-    #decreased = 0
     while pre_train[-1]<stop_pre: #improving: #pre_new <.90): or count < 100:
         c+=1
         # pick random labeled example (out of a number less than 600, depending on number of folds in cv)
@@ -113,67 +106,12 @@ def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=Non
         if f_hat > (fyi-1):
             #print 'Taking a gradient step to maximize precision at k'
             # make a gradient step to minimize error function
-            
-            # enforce positive only
-            # gradient_W = np.zeros(W.shape)
-            # gradient_W[:,j] = L(int(np.floor((Y-1)/N)))*np.maximum(np.zeros(np.transpose(-V*x).shape),np.transpose(-V*x))
-            # gradient_W[:,y_hat_ind] = L(np.floor((Y-1)/N))*np.maximum(np.zeros(np.transpose(V*x).shape),np.transpose(V*x))
-            # W = W - (gamma*gradient_W)
-            # gradient_V = L(int(np.floor((Y-1)/N)))*np.maximum(np.zeros(V.shape),(W[:,y_hat_ind]*np.transpose(x) - (W[:,j]*np.transpose(x)) ))
-            # V = V - (gamma*gradient_V)
             gradient_W = np.zeros(W.shape)
             gradient_W[:,j] = L(int(np.floor((Y-1)/N)))*np.transpose(-V*x)
             gradient_W[:,y_hat_ind] = L(np.floor((Y-1)/N))*np.transpose(V*x)
             W = W - (gamma*gradient_W)
             gradient_V = L(int(np.floor((Y-1)/N)))*(W[:,y_hat_ind]*np.transpose(x) - (W[:,j]*np.transpose(x))) 
             V = V - (gamma*gradient_V)
-            # max norm regularization
-            # Project weigths to enforce constraints ||V_j||_2 <= C (for j=1...d) and ||W_i||_2 <= C (for i=1...Y)
-            # for dd in range(d):
-            #     b = C/np.linalg.norm(V[:,dd])
-            #     V[:,dd] = V[:,dd]*b
-            # for YY in range(Y):
-            #     b=C/np.linalg.norm(W[:,YY])
-            #     W[:,YY] = b*W[:,YY]
-
-        # Calculate error
-        # if count[i,j,y_hat_ind]==1:
-        #     if (1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,y_hat_ind])*V*x)) < 0:
-        #         err[i,j,y_hat_ind,0] = 0
-        #     else:
-        #         err[i,j,y_hat_ind, 0] =  L(np.floor((Y-1)/N))*(1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,y_hat_ind])*V*x))
-        # elif count[i,j,y_hat_ind]==2:
-        #     if (1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,y_hat_ind])*V*x)) < 0:
-        #         err[i,j,y_hat_ind,1] = 0
-        #     else:
-        #         err[i,j,y_hat_ind,1] = L(np.floor((Y-1)/N))*(1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,y_hat_ind])*V*x))
-        #     if err[i,j,y_hat_ind,1] == 0 or err[i,j,y_hat_ind,1]==err[i,j,y_hat_ind,0]:# or err[i,1] > err[i,0]:
-        #         err[i,j,y_hat_ind,2] = 1
-        #         print 'error for sample', i, 'stopped improving'
-        #     #print 'error for sample',i,'went from ', err[i,0], 'to', err[i,1]
-        #     if err[i,j,y_hat_ind,1] > err[i,j,y_hat_ind,0]:
-        #         increased += 1
-        #     elif err[i,j,y_hat_ind,1] < err[i,j,y_hat_ind,0]:
-        #         decreased +=1
-        #     # print 'error increased',increased,'times'
-        #     # print 'error decreased', decreased, 'times'
-        # else:
-        #     err[i,j,y_hat_ind,0] = err[i,j,y_hat_ind,1]
-        #     if (1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,y_hat_ind])*V*x)) < 0:
-        #         err[i,j,y_hat_ind,1] = 0
-        #     else:
-        #         err[i,j,y_hat_ind,1] =L(np.floor((Y-1)/N))*(1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,y_hat_ind])*V*x))
-        #     if err[i,j,y_hat_ind,1] == 0 or err[i,j,y_hat_ind,1]==err[i,j,y_hat_ind,0]:# or err[i,1] > err[i,0]:
-        #         err[i,j,y_hat_ind,2] = 1
-        #         print 'error for sample', i, 'stopped improving'
-        #     #print 'error for sample',i,'went from ', err[i,0], 'to', err[i,1]
-        #     if err[i,j,y_hat_ind,1] > err[i,j,y_hat_ind,0]:
-        #         increased += 1
-        #     elif err[i,j,y_hat_ind,1] < err[i,j,y_hat_ind,0]:
-        #         decreased +=1
-            # print 'error increased',increased,'times'
-            # print 'error decreased', decreased, 'times'
-        #print 'err: ', err_new
         if not(c%100):
             if select_model:
                 print 'evaluating...'
@@ -185,9 +123,9 @@ def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=Non
                 pre_t,dist_t = validate(W, V, Xs_test, Ys_test,k)
                 pre_test = np.append(pre_test,pre_t)
                 dist_test = np.append(dist_test,dist_t)
-                print 'test precision', pre_test
-                print 'test distance', dist_test
-                if best_test_dist == None or dist_test<best_test_dist:
+                print 'test precision', pre_test[-1]
+                print 'test distance', dist_test[-1]
+                if best_test_dist == None or dist_test[-1]<best_test_dist:
                     stop_train_pre = pre_train[-1]
                     best_test_dist = dist_test[-1]
                     W_best = W
@@ -197,271 +135,16 @@ def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=Non
                 pre_train,dist_train = validate(W, V, Xs_train, Ys_train,k)
                 W_best = W
                 V_best = V
-            print 'training precision',pre_train
-
-                #improving = False
+            print 'training precision',pre_train[-1]
     return W_best,V_best,pre_train,pre_test,dist_train, dist_test,stop_train_pre,best_test_dist
 
-# def WARP_opt_weighted2(Xs,Ys,k,C,D):
-#     """
-#     Input:
-#         Xs - images
-#         Ys - annotations
-#         k - for evaluating precision@k
-#         C - constraint for max norm regularization
-#         D - dimensionality of joint space
-#     """
-#     n = Xs.shape[1] # number of images: 
-#     Y = Ys.shape[0] # size of dictionary: 213
-#     d = Xs.shape[0] # dimensionality of images: varies with subject
-#     #D = 101 # ? choose empirically 
-#     # initialize matrices V and W at random with zero mean and std of 1/sqrt(d)
-#     W = np.matrix([[random.gauss(0, 1/np.sqrt(d)) for row in range(Y)] for col in range(D)])
-#     V = np.matrix([[random.gauss(0, 1/np.sqrt(d)) for row in range(d)] for col in range(D)])
-#     pre_new = validate(W,V,Xs,Ys,k)
-#     #print 'initial precision: ',pre_new
-#     c=0
-#     new_rank = np.zeros((Y,n))
-#     #count=0
-#     f_new = 1
-#     rankunchanged=0
-#     err = np.zeros((n,3)) # 3rd column indicates whether error is still improving or not
-#     count = np.zeros(n)
-#     increased = 0
-#     decreased = 0
-#     while (c<=1 or not((err[:,2]==1).all())): #pre_new <.90): or count < 100:
-#         c+=1
-#         # pick random labeled example (out of 600 in this case)
-#         i = random.randrange(0,n,1)
-#         if err[i,2]==1:
-#             continue
-#         count[i] +=1
-#         x = Xs[:,i] # d x 1
-#         y = Ys[:,i] # Y x 1
+def plot_error_curves(dist_train, dist_test):
 
-#         # choose random label
-#         j = random.randrange(0,Y,1)
-#         N=0
-#         while N==0 or not(f_n > (f_p-1)):
-#             if N>= (Y-1):
-#                 break; 
-#             # find a label s.t. the difference in rank between the two labels is at least 1 and the lower ranked label has a higher probability
-#             # i.e. the ranking is incorrect
-#             # then proceed as in previous version, update mapping matrices
-#             m=random.randrange(0,Y,1)
-#             if Ys[m, i]==Ys[j,i]: # if the labels have the same probability, we can't learn from them, skip
-#                 continue
-#             else:
-#                 N+=1
-#                 if Ys[m, i] >Ys[j,i]: # which ever label has the highest prob becomes the positive example
-#                     pos = m
-#                     neg = j
-#                 else:
-#                     pos = j
-#                     neg = m
-#                 print 'positive prob:',Ys[pos,i]
-#                 print 'negative prob:',Ys[neg,i]
-
-#                 phi_x = V*x
-#                 phi_p = W[:,pos]
-#                 phi_n = W[:,neg]
-#                 f_p=np.transpose(phi_p)*phi_x # rank of positive (more probable) label
-#                 f_n = np.transpose(phi_n)*phi_x   # rank of negative (less probable) label
-#                 if f_n > (f_p -1): # ranking is incorrect, so adjust mapping
-#                     break # appropriate pair of labels has been found, leave loop and continue with gradient descent step
-                    
-#         if f_n > (f_p -1):
-#             #print 'Taking a gradient step to maximize precision at k'
-#             # make a gradient step to minimize error function
-#             gamma = .2 # learning rate
-        
-#             # enforce positive only
-#             # gradient_W = np.zeros(W.shape)
-#             # gradient_W[:,j] = L(int(np.floor((Y-1)/N)))*np.maximum(np.zeros(np.transpose(-V*x).shape),np.transpose(-V*x))
-#             # gradient_W[:,y_hat_ind] = L(np.floor((Y-1)/N))*np.maximum(np.zeros(np.transpose(V*x).shape),np.transpose(V*x))
-#             # W = W - (gamma*gradient_W)
-#             # gradient_V = L(int(np.floor((Y-1)/N)))*np.maximum(np.zeros(V.shape),(W[:,y_hat_ind]*np.transpose(x) - (W[:,j]*np.transpose(x)) ))
-#             # V = V - (gamma*gradient_V)
-        
-#             gradient_W = np.zeros(W.shape)
-#             gradient_W[:,j] = L(int(np.floor((Y-1)/N)))*np.transpose(-V*x)
-#             gradient_W[:,m] = L(np.floor((Y-1)/N))*np.transpose(V*x)
-#             W = W - (gamma*gradient_W)
-#             gradient_V = L(int(np.floor((Y-1)/N)))*(W[:,m]*np.transpose(x) - (W[:,j]*np.transpose(x))) 
-#             V = V - (gamma*gradient_V)
-        
-#             # max norm regularization
-#             # Project weigths to enforce constraints ||V_j||_2 <= C (for j=1...d) and ||W_i||_2 <= C (for i=1...Y)
-#             for dd in range(d):
-#                 b = C/np.linalg.norm(V[:,dd])
-#                 V[:,dd] = V[:,dd]*b
-#             for YY in range(Y):
-#                 b=C/np.linalg.norm(W[:,YY])
-#                 W[:,YY] = b*W[:,YY]
-                    
-#         if count[i]==1:
-#             err[i, 0] =  L(np.floor((Y-1)/N))*abs((1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,m])*V*x)))
-#         elif count[i]==2:
-#             err[i,1] = L(np.floor((Y-1)/N))*abs((1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,m])*V*x)))
-#             if err[i,1] == 0 or err[i,1]==err[i,0]:# or err[i,1] > err[i,0]:
-#                 err[i,2] = 1
-#                 print 'error for sample', i, 'stopped improving'
-#             #print 'error for sample',i,'went from ', err[i,0], 'to', err[i,1]
-#             if err[i,1] > err[i,0]:
-#                 increased += 1
-#             elif err[i,1] < err[i,0]:
-#                 decreased +=1
-#             print 'error increased',increased,'times'
-#             print 'error decreased', decreased, 'times'
-#         else:
-#             # maybe need new error function
-#             err[i,0] = err[i,1]
-#             err[i,1] =L(np.floor((Y-1)/N))*abs((1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,m])*V*x)))
-#             if err[i,1] == 0 or err[i,1]==err[i,0]:# or err[i,1] > err[i,0]:
-#                 err[i,2] = 1
-#                 print 'error for sample', i, 'stopped improving'
-#             #print 'error for sample',i,'went from ', err[i,0], 'to', err[i,1]
-#             if err[i,1] > err[i,0]:
-#                 increased += 1
-#             elif err[i,1] < err[i,0]:
-#                 decreased +=1
-#             print 'error increased',increased,'times'
-#             print 'error decreased', decreased, 'times'
-            
-
-#         if not(c%100):
-#             pre_old = pre_new
-#             pre_new = validate(W, V, Xs, Ys,k)
-#             print '*** precision: ', pre_new 
-#     return W,V
-
-# def WARP_opt_weighted(Xs,Ys,k,C,D):
-#     """
-#     Input:
-#         Xs - images
-#         Ys - annotations
-#         k - for evaluating precision@k
-#         C - constraint for max norm regularization
-#         D - dimensionality of joint space
-#     """
-#     n = Xs.shape[1] # number of images: 
-#     Y = Ys.shape[0] # size of dictionary: 213
-#     d = Xs.shape[0] # dimensionality of images: varies with subject
-#     #D = 101 # ? choose empirically 
-#     # initialize matrices V and W at random with zero mean and std of 1/sqrt(d)
-#     W = np.matrix([[random.gauss(0, 1/np.sqrt(d)) for row in range(Y)] for col in range(D)])
-#     V = np.matrix([[random.gauss(0, 1/np.sqrt(d)) for row in range(d)] for col in range(D)])
-#     pre_new = validate(W,V,Xs,Ys,k)
-#     #print 'initial precision: ',pre_new
-#     c=0
-#     new_rank = np.zeros((Y,n))
-#     #count=0
-#     f_new = 1
-#     rankunchanged=0
-#     err = np.zeros((n,3)) # 3rd column indicates whether error is still improving or not
-#     count = np.zeros(n)
-#     brain_ind = range(n)
-#     while (c<=1 or not((err[:,2]==1).all())): #pre_new <.90): or count < 100:
-#         random.shuffle(brain_ind)
-#         # pick random labeled example (out of 600 in this case)
-#         # iterate through 600 brain volumes in a new order each time, i.e. random selection without replacement, iteratively
-#         for i in brain_ind:
-#             labels = range(Y)
-#             #print i
-#             if err[i,2]==1:
-#                 continue
-#             count[i] +=1
-#             x = Xs[:,i] # d x 1
-#             y = Ys[:,i] # Y x 1
-#                             # get index of positive labels 
-#                             #positive = [m for m in range(0,Y,1) if y[m]==1]
-
-#                             # pick a random positive label from y
-#             # iterate through all 213 possible labels
-#                             #j = random.choice(positive)
-#             random.shuffle(labels)
-#             for j in labels:
-#                 N=0
-#                             #print 'choosing negative label until rank(neg) > rank(pos)-1...' same as rank(neg) >= rank(pos)
-#                 # find a label s.t. the difference in rank between the two labels is at least 1 and the lower ranked label has a higher probability
-#                 # i.e. the ranking is incorrect
-#                 # then proceed as in previous version, update mapping matrices
-#                 labels2 = list(labels)
-#                 random.shuffle(labels2)
-#                 for m in labels2:
-#                     c+=1
-#                     if N>= (Y-1):
-#                         break;
-#                     N+=1
-#                     if Ys[m, i]==Ys[j,i]: # if the labels have the same probability, we can't learn from them, skip
-#                         continue
-#                     else:
-#                         [neg,pos] = np.sort([k, j]) 
-#                         phi_x = V*x
-#                         phi_y = W[:,pos]
-#                         phi_y_hat = W[:,neg]
-#                         fyi=np.transpose(phi_y)*phi_x # rank of positive (more probable) label
-#                         f_hat = np.transpose(phi_y_hat)*phi_x   # rank of negative (less probable) label
-#                         if f_hat >= fyi: # ranking is incorrect, so adjust mapping
-#                             break # appropriate pair of labels has been found, leave loop and continue with gradient descent step
-                    
-#                 if f_hat >= fyi:
-#                     #print 'Taking a gradient step to maximize precision at k'
-#                     # make a gradient step to minimize error function
-#                     gamma = .2 # learning rate
-                
-#                     # enforce positive only
-#                     # gradient_W = np.zeros(W.shape)
-#                     # gradient_W[:,j] = L(int(np.floor((Y-1)/N)))*np.maximum(np.zeros(np.transpose(-V*x).shape),np.transpose(-V*x))
-#                     # gradient_W[:,y_hat_ind] = L(np.floor((Y-1)/N))*np.maximum(np.zeros(np.transpose(V*x).shape),np.transpose(V*x))
-#                     # W = W - (gamma*gradient_W)
-#                     # gradient_V = L(int(np.floor((Y-1)/N)))*np.maximum(np.zeros(V.shape),(W[:,y_hat_ind]*np.transpose(x) - (W[:,j]*np.transpose(x)) ))
-#                     # V = V - (gamma*gradient_V)
-                
-#                     gradient_W = np.zeros(W.shape)
-#                     gradient_W[:,j] = L(int(np.floor((Y-1)/N)))*np.transpose(-V*x)
-#                     gradient_W[:,k] = L(np.floor((Y-1)/N))*np.transpose(V*x)
-#                     W = W - (gamma*gradient_W)
-#                     gradient_V = L(int(np.floor((Y-1)/N)))*(W[:,k]*np.transpose(x) - (W[:,j]*np.transpose(x))) 
-#                     V = V - (gamma*gradient_V)
-                
-#                     # max norm regularization
-#                     # Project weigths to enforce constraints ||V_j||_2 <= C (for j=1...d) and ||W_i||_2 <= C (for i=1...Y)
-#                     for dd in range(d):
-#                         b = C/np.linalg.norm(V[:,dd])
-#                         V[:,dd] = V[:,dd]*b
-#                     for YY in range(Y):
-#                         b=C/np.linalg.norm(W[:,YY])
-#                         W[:,YY] = b*W[:,YY]
-#                     if not(c%100):
-#                         pre_old = pre_new
-#                         pre_new = validate(W, V, Xs, Ys,k)
-#                         print 'precision: ', pre_new 
-#         if count[i]==1:
-#             err[i, 0] =  L(np.floor((Y-1)/N))*abs((1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,k])*V*x)))
-#         elif count[i]==2:
-#             err[i,1] = L(np.floor((Y-1)/N))*abs((1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,k])*V*x)))
-#             if err[i,1] == 0 or err[i,1]==err[i,0]:# or err[i,1] > err[i,0]:
-#                 err[i,2] = 1
-#                 print 'error for sample', i, 'stopped improving'
-#             print 'error for sample',i,'went from ', err[i,0], 'to', err[i,1]
-#         else:
-#             err[i,0] = err[i,1]
-#             err[i,1] =L(np.floor((Y-1)/N))*abs((1 - (np.transpose(W[:,j])*V*x) + (np.transpose(W[:,k])*V*x)))
-#             if err[i,1] == 0 or err[i,1]==err[i,0]:# or err[i,1] > err[i,0]:
-#                 err[i,2] = 1
-#                 print 'error for sample', i, 'stopped improving'
-#             print 'error for sample',i,'went from ', err[i,0], 'to', err[i,1]
-            
-
-#         #print 'err: ', err_new
-#         #if not(c%100):
-#         # if True:
-#         #     pre_old = pre_new
-#         #     pre_new = validate(W, V, Xs, Ys,k)
-#         #     print 'precision: ', pre_new
-#         #print 'f: ', f_new
-#     return W,V
+    fig1 = plt.figure()
+    x= range(len(dist_train))
+    for i in x:
+        plt.plot(x, dist_train[str(i)])
+        plt.plot(x, dist_test[str(i)])
 
 def WARP_opt(Xs, Ys,k,C,D):
     """
@@ -668,25 +351,12 @@ def evaluate_tag_prediction(subject,k=5,C=1,D=50,tag_feat_file='weighted_top100_
         trainbrains = np.append(brains[:,0:start], brains[:,end+1:],1)
         testwords = words[:,start:end]
         trainwords = np.append(words[:,0:start], words[:,end+1:],1)
-        # print testbrain.shape
-        # print trainbrains.shape
-        # print testwords.shape
-        # print trainwords.shape
         W_best,V_best,pre_train,pre_test,stop_train_pre,best_test_pre= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,Xs_test=testbrain,Ys_test=testwords)
         #W,V = WARP_opt(trainbrains, trainwords,k,C,D)
         test_precision[str(l)] = pre_test
         test_precision[str(l)] = pre_test
         cv_train_pre = np.append(cv_train_pre,stop_train_pre)
-        #pak[l]=validate(W_best, V_best, testbrain, testwords,k)
         pak[l] = best_test_pre
-        # rank = np.transpose(W_best)*V_best*testbrain
-        # ind = np.argsort(rank,0)[::-1]
-        # p = np.zeros(testwords.shape[1])
-        # testwords_bin = testwords > 0
-        # for i, stim in enumerate(np.transpose(testwords_bin)):
-        #     truepos = sum(stim[0,ind[0:k,i]])
-        #     p[i] = truepos/k
-        # pak[l] = np.mean(p)
         print 'precision on fold ',l,': ',pak[l]
     avg_precision = np.mean(pak)
     to_save = np.append(avg_precision, pak)
@@ -710,6 +380,8 @@ def evaluate_brain_prediction3(subject='1mar11sj',stop_pre=.88,k=5,C=1,D=75,feat
     KNN_dist = np.zeros(n)
     Ws = {}
     Vs = {}
+    all_dist_test = {}
+    all_dist_train = {}
     trained = 0
     # iterate through each 
     for i in range(n):
@@ -728,18 +400,17 @@ def evaluate_brain_prediction3(subject='1mar11sj',stop_pre=.88,k=5,C=1,D=75,feat
             testwords = words[:,stim_labels==stim_labels[i]]
             testbrains = brains[:,stim_labels==stim_labels[i]]
             #W_best,V_best,pre_train,pre_test,stop_train_pre,best_test_pre= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,stop_pre=stop_pre)
-            W_best,V_best,pre_train,pre_test,stop_train_pre,best_test_pre= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,Xs_test=testbrains,Ys_test=testwords)
+            W_best,V_best,pre_train,pre_test,dist_train, dist_test,stop_train_pre,best_test_dist= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,Xs_test=testbrains,Ys_test=testwords)
             Ws[str(cur_stim)] = W_best
             Vs[str(cur_stim)] = V_best
-        #brainrank = np.sum(np.transpose(testwords)*np.transpose(W_best)*V_best*trainbrains,0)
-        #brainrank = np.array([(validate(W_best, V_best, np.transpose(brain), testwords, k)) for brain in np.transpose(trainbrains)])
+            all_dist_test[str(i)] = dist_test
+            all_dist_train[str(i)] = dist_train
         brainrank = np.array([(validate(W_best, V_best, np.transpose(brain), testtags, k)) for brain in np.transpose(trainbrains)])
         # indices of brains whose distance (after turning rank into prob) to actual tag vec is shortest
         top_brain_ind = np.argsort(brainrank[:,1])[:k]
         pred_brain = np.mean(trainbrains[:,top_brain_ind],1) # brain activity predicted by WARP loss optimization
         # weighted predicted brain - don't use this when using distances to rank brains!
         #pred_brain = np.sum(trainbrains[:,top_brain_ind]*brainrank[top_brain_ind])/np.sum(brainrank[top_brain_ind])
-        #print pred_brain.shape
 
         # KNN 
         print testtags.shape, trainwords.shape
@@ -762,151 +433,7 @@ def evaluate_brain_prediction3(subject='1mar11sj',stop_pre=.88,k=5,C=1,D=75,feat
         print 'WARP brain significantly closer to target than KNN brain :D'
     else:
         print ':(' 
-    return WARP_dist, KNN_dist, t,prob
-
-def evaluate_brain_prediction2(subject='1mar11sj',k=5,C=1,D=75,feat_expr='_sts+hg_avgrun_75x72',tag_feat_file='weighted_top100_lastfm+pandora_feats.txt'):
-    """
-
-    """
-    # load brain data
-    stim_labels = np.genfromtxt('stimuli_labels.txt')
-    brains = np.matrix(np.transpose(bregman.audiodb.adb.read('brain_features/'+subject+feat_expr+'.brain')))
-    n=brains.shape[1]
-    if n==75:
-        print '75'
-        # stimuli_ids = np.array([line.strip() for line in open('stimuli_labels.txt')])
-        # stimuli_ids_tr = list(itertools.chain(*[[sid+'a', sid+'b', sid+'c'] for sid in stimuli_ids]))
-        stim_labels = np.unique(stim_labels)
-        stim_labels = np.ravel([np.tile(i,(1,3)) for i in stim_labels])
-        #print stim_labels.shape
-        s=75
-    elif n==600:
-        stim_labels = np.ravel([np.tile(i,(1,3)) for i in stim_labels])
-        s=75
-    elif n==200:
-        s=25
-    dims = brains.shape[0]
-    # load tag data
-    words = np.genfromtxt(tag_feat_file)
-    words = np.transpose(np.matrix([words[i-1,:]for i in stim_labels ]))
-    ncorrect=0.0
-    count=0.0
-    for i in range(s):
-        if n==75:
-            # simple leave one out cross validation
-            count+=1
-            possibledecoys = np.setdiff1d(range(n),[i])
-            possibledecoys = range(n)
-            possibledecoys.remove(i)
-            for decoy_ind in possibledecoys:
-            #decoy_ind = random.choice(possibledecoys)
-            #print decoy_ind
-                train_ind = np.setdiff1d(range(n),[i,decoy_ind])
-                targetbrain = brains[:,i]
-                decoybrain = brains[:,decoy_ind]
-                trainbrains = brains[:,train_ind]
-                targetwords = words[:,i]
-                decoywords = words[:,decoy_ind]
-                trainwords = words[:,train_ind]
-                W_best,V_best,pre_train,pre_test,stop_train_pre,best_test_pre= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,stop_pre=.92)
-                # predict target and decoy brains 
-                # Method 1: direct application of mapping matrices (unllikely to work)
-                ptargetbrain = np.transpose(targetwords)*np.transpose(W_best)*V_best
-                pdecoybrain = np.transpose(decoywords)*np.transpose(W_best)*V_best
-
-                # Method 2
-                rank
-                # inspect euclidean distance to determine target
-                tdist = bregman.distance.euc2(np.transpose(np.array(targetbrain)), np.array(ptargetbrain))
-                ddist = bregman.distance.euc2(np.transpose(np.array(targetbrain)), np.array(pdecoybrain))
-                print 'target dist: ', tdist
-                print 'decoy dist: ', ddist
-                if tdist<ddist:
-                    ncorrect+=1.0
-                    print 'correct!'
-                cur_acc = ncorrect/float(count)
-                print 'current accuracy: ',cur_acc
-
-        else:
-            for j in range(8):
-                count+=1
-                samebrains_ind =  [(k*s)+i for k in range(8)] # indeces of other presentations of the same track 
-                possibledecoys = np.setdiff1d(range(n),samebrains_ind)
-                decoy_ind = random.choice(possibledecoys)
-                train_ind = np.setdiff1d(range(n),[(j*s)+i,decoy_ind])
-                targetbrain = brains[:,(j*s)+i]
-                decoybrain = brains[:,decoy_ind]
-                trainbrains = brains[:,train_ind]
-                targetwords = words[:,(j*s)+i]
-                decoywords = words[:,decoy_ind]
-                trainwords = words[:,train_ind]
-                W_best,V_best,pre_train,pre_test,stop_train_pre,best_test_pre= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,stop_pre=.92)
-                # predict target and decoy brains 
-                ptargetbrain = np.transpose(targetwords)*np.transpose(W)*V
-                pdecoybrain = np.transpose(decoywords)*np.transpose(W)*V
-                # inspect euclidean distance to determine target
-                tdist = bregman.distance.euc2(np.transpose(np.array(targetbrain)), np.array(ptargetbrain))
-                ddist = bregman.distance.euc2(np.transpose(np.array(targetbrain)), np.array(pdecoybrain))
-                print 'target dist: ', tdist
-                print 'decoy dist: ', ddist
-                if tdist<ddist:
-                    ncorrect+=1.0
-                    print 'correct!'
-                cur_acc = ncorrect/float(count)
-                print 'current accuracy: ',cur_acc
-    print 'accuracy: ', cur_acc
-    np.savetxt(subject+'_hg+sts_mitchelltest_'+str(k)+'_'+str(n)+'.txt',[accuracy])
-    return cur_acc
-
-def evaluate_brain_prediction(subject='1mar11sj',k=5, feat_expr='_sts+hg_avgrun_75x72',tag_feat_file='weighted_top100_lastfm+pandora_feats.txt'):
-    """
-    Mitchell style evaluation: hold 2 items out, a target and a distractor, evaluate ability to determine target
-    """
-    # load brain data
-    stim_labels = np.genfromtxt('stimuli_labels.txt')
-    brains = np.matrix(np.transpose(bregman.audiodb.adb.read('brain_features/'+subject+feat_expr+'.brain')))
-    n=brains.shape[1]
-    if s==75:
-        stim_labels = np.unique(stim_labels)
-    elif s==600:
-        stim_labels = np.ravel([np.tile(i,(1,3)) for i in stim_labels])
-    dims = brains.shape[0]
-    # load tag data
-    words = np.genfromtxt(tag_feat_file)
-    words = np.transpose(np.matrix([words[i-1,:]for i in stim_labels ]))
-    ncorrect=0.0
-    count=0.0
-    for i in range(s):
-        for j in range(8):
-            count+=1
-            samebrains_ind =  [(k*s)+i for k in range(8)] # indeces of other presentations of the same track 
-            possibledecoys = np.setdiff1d(range(n),samebrains_ind)
-            decoy_ind = random.choice(possibledecoys)
-            train_ind = np.setdiff1d(range(n),[(j*s)+i,decoy_ind])
-            targetbrain = brains[:,(j*s)+i]
-            decoybrain = brains[:,decoy_ind]
-            trainbrains = brains[:,train_ind]
-            targetwords = words[:,(j*s)+i]
-            decoywords = words[:,decoy_ind]
-            trainwords = words[:,train_ind]
-            W,V,pre_train,pre_test = WARP_opt(trainbrains, trainwords,k)
-            # predict target and decoy brains 
-            ptargetbrain = np.transpose(targetwords)*np.transpose(W)*V
-            pdecoybrain = np.transpose(decoywords)*np.transpose(W)*V
-            # inspect euclidean distance to determine target
-            tdist = bregman.distance.euc2(np.transpose(np.array(targetbrain)), np.array(ptargetbrain))
-            ddist = bregman.distance.euc2(np.transpose(np.array(targetbrain)), np.array(pdecoybrain))
-            print 'target dist: ', tdist
-            print 'decoy dist: ', ddist
-            if tdist<ddist:
-                ncorrect+=1.0
-                print 'correct!'
-            cur_acc = ncorrect/float(count)
-            print 'current accuracy: ',cur_acc
-    accuracy = ncorrect/float(feats_size)
-    print 'accuracy: ', accuracy
-    np.savetxt(subject+'_mitchelltest_'+str(k)+'_'+str(feats_size)+'.txt',[accuracy])
-    return accuracy
+    return WARP_dist, KNN_dist, t,prob, all_dist_test, all_dist_train
 
 def calc_baseline(k, tag_feat_file='weighted_top100_lastfm+pandora_feats.txt'):
     """
@@ -971,19 +498,19 @@ def knn_tags(k=5.0, ntags=5.0, tag_feat_file='weighted_top100_lastfm+pandora_fea
     avg_pre = np.mean(pre,1)
     return pre,avg_pre
 
-def learn_params(subject, feat_expr='_sts+hg_600',tag_feat_file='weighted_top100_lastfm+pandora_feats.txt'):
+# def learn_params(subject, feat_expr='_sts+hg_600',tag_feat_file='weighted_top100_lastfm+pandora_feats.txt'):
 
-    Ds = [25,35,50,75,100,200,600]
-    gammas[.01,.05, .1, .15 .2, .25 .3, .05, .06 ]
-    for D in Ds:
-        for gamma in gammas:
-            # load brain data
-            stim_labels = np.genfromtxt('stimuli_labels.txt')
-            stim_labels = np.ravel([np.tile(i,(1,3)) for i in stim_labels])
-            words100 = np.genfromtxt(tag_feat_file)
-            words = np.transpose(np.matrix([words100[i-1,:]for i in stim_labels ]))
-            brains = np.matrix(np.transpose(bregman.audiodb.adb.read('brain_features/'+subject+feat_expr+'.brain')))
-            W_best,V_best,pre_train,pre_test,dist_train, dist_test,stop_train_pre,best_test_dist=WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=gamma,Xs_test=None,Ys_test=None,stop_pre=None)
+#     Ds = [25,35,50,75,100,200,600]
+#     gammas[.01,.05, .1, .15 .2, .25 .3, .05, .06 ]
+#     for D in Ds:
+#         for gamma in gammas:
+#             # load brain data
+#             stim_labels = np.genfromtxt('stimuli_labels.txt')
+#             stim_labels = np.ravel([np.tile(i,(1,3)) for i in stim_labels])
+#             words100 = np.genfromtxt(tag_feat_file)
+#             words = np.transpose(np.matrix([words100[i-1,:]for i in stim_labels ]))
+#             brains = np.matrix(np.transpose(bregman.audiodb.adb.read('brain_features/'+subject+feat_expr+'.brain')))
+#             W_best,V_best,pre_train,pre_test,dist_train, dist_test,stop_train_pre,best_test_dist=WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=gamma,Xs_test=None,Ys_test=None,stop_pre=None)
 
 
 def main():
@@ -998,6 +525,7 @@ def main():
     #     evaluate_tag_prediction(subject,k)
     # elif 'brain' in testtype:
     evaluate_brain_prediction3(subject)
+
 
 if __name__ == '__main__':
     main()
