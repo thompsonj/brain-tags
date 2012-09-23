@@ -1,6 +1,6 @@
 #!/bin/bash
 
-WALLTIME=021:00:00
+WALLTIME=048:00:00
 DIR=/global/data/casey/thompson/brain_tags
 SUBJECTS="1mar11yw 
 5mar11ad 
@@ -15,13 +15,13 @@ SUBJECTS="1mar11yw
 16mar11sg 
 17mar11sw 
 26feb11kj 
-26feb11zi
-1mar11sj"
+26feb11zi"
+#1mar11sj"
 # KS="1
 # 5
 # 10"
 KS="5"
-feats_size="600"
+# feats_size="600"
 
 for subject in $SUBJECTS
   do
@@ -31,7 +31,7 @@ for subject in $SUBJECTS
           SUBJECT=${subject/*\/}
           cat $DIR/predict_brains.pbs | sed "s/SUBJECT/$SUBJECT/" | sed "s/WALLTIME/$WALLTIME/" > /tmp/predict_brains.$proc
           echo $subject $k
-          qsub -v subject=$subject,k=$k,feats_size=$feats_size /tmp/predict_brains.$proc
+          qsub -v subject=$subject /tmp/predict_brains.$proc
       done
   done
 

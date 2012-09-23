@@ -12,19 +12,24 @@ Algorithm adapted from Weston 2011
 
 # these are all external code not written by me
 import os, sys
-import random
 import numpy as np
 import bregman 
 from scipy.spatial.distance import pdist
 from scipy.spatial.distance import squareform
 from scipy.stats import ttest_ind
 from scipy.stats import ttest_rel
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
+#from multiprocessing import Process, Queue
+import pprocess
+from pylab import *
+import random
+import time
 
 
-def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=None,stop_pre=None):
+def WARP_opt_weighted3(stim_ind, Xs_train,Ys_train,k,C,D,learning_rate=.2,Xs_test=None,Ys_test=None,stop_pre=None):
     """
     Input:
+        stim_ind - unused, 1 based
         Xs - images
         Ys - annotations
         k - for evaluating precision@k
@@ -42,7 +47,7 @@ def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=Non
         the tag prediction task.
 
     """
-    print 'learning rate:', gamma
+    print 'learning rate:', learning_rate
     n = Xs_train.shape[1]
     Y = Ys_train.shape[0] # size of dictionary
     d = Xs_train.shape[0]# dimensionality of images
@@ -109,12 +114,12 @@ def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=Non
             gradient_W = np.zeros(W.shape)
             gradient_W[:,j] = L(int(np.floor((Y-1)/N)))*np.transpose(-V*x)
             gradient_W[:,y_hat_ind] = L(np.floor((Y-1)/N))*np.transpose(V*x)
-            W = W - (gamma*gradient_W)
+            W = W - (learning_rate*gradient_W)
             gradient_V = L(int(np.floor((Y-1)/N)))*(W[:,y_hat_ind]*np.transpose(x) - (W[:,j]*np.transpose(x))) 
-            V = V - (gamma*gradient_V)
+            V = V - (learning_rate*gradient_V)
         if not(c%100):
             if select_model:
-                print 'evaluating...'
+                #print 'evaluating...'
                 pre_tr,dist_tr = validate(W, V, Xs_train, Ys_train,k)
                 #pre_train = np.append(pre_train,pre_tr)
                 pre_train = np.append(pre_train,pre_tr)
@@ -136,15 +141,17 @@ def WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=.2,Xs_test=None,Ys_test=Non
                 W_best = W
                 V_best = V
             print 'training precision',pre_train[-1]
-    return W_best,V_best,pre_train,pre_test,dist_train, dist_test,stop_train_pre,best_test_dist
+    return (stim_ind,W_best,V_best,pre_train,pre_test,dist_train, dist_test,stop_train_pre,best_test_dist)
 
-def plot_error_curves(dist_train, dist_test):
-
-    fig1 = plt.figure()
-    x= range(len(dist_train))
+def plot_error_curves(train, test, title='Euc Distance'):
+    #fig1 = plt.figure()
+    x= range(len(train))
     for i in x:
-        plt.plot(x, dist_train[str(i)])
-        plt.plot(x, dist_test[str(i)])
+        plot(x, train[str(i+1)],'b')
+        plot(x, test[str(i+1)],'r-')
+    legend(('training dist'), ('testing dist'))
+    title(title)
+    show()
 
 def WARP_opt(Xs, Ys,k,C,D):
     """
@@ -276,12 +283,11 @@ def WARP_opt(Xs, Ys,k,C,D):
         #print 'f: ', f_new
     return W,V
 
-
-"""
-Use learned mapping matrices W and V to the rank of all tags for each image
-Ys = 100x600
-"""
 def validate(W, V, Xs, Ys, k):
+    """
+    Use learned mapping matrices W and V to the rank of all tags for each image
+    Ys = 100x600
+    """
     # print 'in validate'
     ranks = np.transpose(W)*V*Xs
     # each column in rank is for a different image
@@ -323,6 +329,45 @@ def L(k):
         alpha = 1/j
         loss = loss + alpha
     return loss
+
+def learn_25_models(subject, k=5,C=1,D=50,learning_rate=.2,feat_expr='_sts+hg_600',tag_feat_file='weighted_top100_lastfm+pandora_feats.txt'):
+    t = time.time()
+    stim_labels = np.genfromtxt('stimuli_labels.txt')
+    brains = np.matrix(np.transpose(bregman.audiodb.adb.read('brain_features/'+subject+feat_expr+'.brain')))
+    n=brains.shape[1]
+    uni_stim_labels = np.unique(stim_labels)
+    stim_labels = np.ravel([np.tile(i,(1,3)) for i in stim_labels])
+    words = np.genfromtxt(tag_feat_file)
+    words = np.transpose(np.matrix([words[i-1,:]for i in stim_labels ])) # 600 # Y
+    Ws = {}
+    Vs = {}
+    all_dist_test = {}
+    all_dist_train = {}
+    all_best_test_dists = np.zeros(25)
+    queue = pprocess.Queue(limit=100)
+    WARP = queue.manage(pprocess.MakeParallel(WARP_opt_weighted3))
+    for stim in uni_stim_labels: # 1 based 
+        print stim
+        trainwords = words[:,stim_labels!=stim]
+        trainbrains = brains[:,stim_labels!=stim]
+        testwords = words[:,stim_labels==stim]
+        testbrains = brains[:,stim_labels==stim]
+        WARP(stim, trainbrains,trainwords,k,C,D,learning_rate,Xs_test=testbrains,Ys_test=testwords)
+    #time.sleep(20)
+    print 'Finishing...'
+    for i, W_best, V_best, pre_train ,pre_test, dist_train, dist_test, stop_train_pre, best_test_dist in queue:
+        print 'queue', i
+        Ws[str(i)] = W_best
+        Vs[str(i)] = V_best
+        all_dist_test[str(i)] = dist_test
+        all_dist_train[str(i)] = dist_train
+        all_pre_test[str(i)] = pre_test
+        all_pre_train[str(i)] = pre_train
+        all_best_test_dists[i-1] = best_test_dist
+    total_time = time.time() - t
+    print "Time taken:", total_time
+    avg_best_dist = np.mean(all_best_test_dists)
+    return Ws, Vs,all_dist_test,all_dist_train,all_pre_test,all_pre_train,total_time,avg_best_dist
 
 def evaluate_tag_prediction(subject,k=5,C=1,D=50,tag_feat_file='weighted_top100_lastfm+pandora_feats.txt'):
     # load brain data
@@ -378,33 +423,36 @@ def evaluate_brain_prediction3(subject='1mar11sj',stop_pre=.88,k=5,C=1,D=75,feat
     dist = squareform(pdist(np.transpose(words)))
     WARP_dist = np.zeros(n)
     KNN_dist = np.zeros(n)
-    Ws = {}
-    Vs = {}
-    all_dist_test = {}
-    all_dist_train = {}
-    trained = 0
-    # iterate through each 
+    
+    #trained = 0
+    # train models, one for each of the 25 stimuli
+    Ws,Vs,all_dist_test,all_dist_train,all_pre_test,all_pre_train,total_time,avg_best_dist = learn_25_models(subject)
+
+    # synthesize and evaluate predicted brain activity
+    # iterate through each data point
     for i in range(n):
         testtags = words[:,i]
-        print testtags.shape
         testbrain = brains[:,i]
         cur_stim = stim_labels[i]
-        if str(cur_stim) in Ws:
-            W_best = Ws[str(cur_stim)]
-            V_best = Vs[str(cur_stim)]
-        else:
-            trained+=1
-            print 'training ',trained, 'time'
-            trainwords = words[:,stim_labels!=stim_labels[i]]
-            trainbrains = brains[:,stim_labels!=stim_labels[i]]
-            testwords = words[:,stim_labels==stim_labels[i]]
-            testbrains = brains[:,stim_labels==stim_labels[i]]
-            #W_best,V_best,pre_train,pre_test,stop_train_pre,best_test_pre= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,stop_pre=stop_pre)
-            W_best,V_best,pre_train,pre_test,dist_train, dist_test,stop_train_pre,best_test_dist= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,Xs_test=testbrains,Ys_test=testwords)
-            Ws[str(cur_stim)] = W_best
-            Vs[str(cur_stim)] = V_best
-            all_dist_test[str(i)] = dist_test
-            all_dist_train[str(i)] = dist_train
+        W_best = Ws[str(cur_stim)]
+        V_best = Vs[str(cur_stim)]
+
+        # if str(cur_stim) in Ws:
+        #     W_best = Ws[str(cur_stim)]
+        #     V_best = Vs[str(cur_stim)]
+        # else:
+        #     trained+=1
+        #     print 'training ',trained, 'time'
+        #     trainwords = words[:,stim_labels!=stim_labels[i]]
+        #     trainbrains = brains[:,stim_labels!=stim_labels[i]]
+        #     testwords = words[:,stim_labels==stim_labels[i]]
+        #     testbrains = brains[:,stim_labels==stim_labels[i]]
+        #     #W_best,V_best,pre_train,pre_test,stop_train_pre,best_test_pre= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,stop_pre=stop_pre)
+        #     W_best,V_best,pre_train,pre_test,dist_train, dist_test,stop_train_pre,best_test_dist= WARP_opt_weighted3(trainbrains,trainwords,k,C,D,Xs_test=testbrains,Ys_test=testwords)
+        #     Ws[str(cur_stim)] = W_best
+        #     Vs[str(cur_stim)] = V_best
+        #     all_dist_test[str(i)] = dist_test
+        #     all_dist_train[str(i)] = dist_train
         brainrank = np.array([(validate(W_best, V_best, np.transpose(brain), testtags, k)) for brain in np.transpose(trainbrains)])
         # indices of brains whose distance (after turning rank into prob) to actual tag vec is shortest
         top_brain_ind = np.argsort(brainrank[:,1])[:k]
@@ -422,7 +470,7 @@ def evaluate_brain_prediction3(subject='1mar11sj',stop_pre=.88,k=5,C=1,D=75,feat
         print 'WARP_dist:', WARP_dist
         KNN_dist[i]= np.linalg.norm(pred_brain_knn-testbrain)
         print 'KNN_dist:', KNN_dist
-    print 'Model trained only ',trained, 'times'
+    #print 'Model trained only ',trained, 'times'
     #t,prob = ttest_ind(WARP_dist,KNN_dist)
     t,prob = ttest_rel(WARP_dist,KNN_dist)
     print 't:',t,'prob:',prob
@@ -498,20 +546,25 @@ def knn_tags(k=5.0, ntags=5.0, tag_feat_file='weighted_top100_lastfm+pandora_fea
     avg_pre = np.mean(pre,1)
     return pre,avg_pre
 
-# def learn_params(subject, feat_expr='_sts+hg_600',tag_feat_file='weighted_top100_lastfm+pandora_feats.txt'):
+def learn_params(subject, feat_expr='_sts+hg_600',tag_feat_file='weighted_top100_lastfm+pandora_feats.txt'):
+    """
+    """
+    #subjects = ['1mar11sj','1mar11yw','5mar11ad','5mar11at','8mar11am','8mar11ec','9mar11ab','9mar11jd','16mar11hy','16mar11mg','16mar11mh','16mar11sg','17mar11sw','26feb11kj','26feb11zi']
+    #subjects = ['1mar11sj','1mar11yw']
+    #Ds = [25,35,50,75,100,200,600]
+    Ds=[50,100]
+    #learning_rates=[.01,.05, .1, .15 .2, .25 .3, .05, .06 ]
+    learning_rates=[.1, .2]
 
-#     Ds = [25,35,50,75,100,200,600]
-#     gammas[.01,.05, .1, .15 .2, .25 .3, .05, .06 ]
-#     for D in Ds:
-#         for gamma in gammas:
-#             # load brain data
-#             stim_labels = np.genfromtxt('stimuli_labels.txt')
-#             stim_labels = np.ravel([np.tile(i,(1,3)) for i in stim_labels])
-#             words100 = np.genfromtxt(tag_feat_file)
-#             words = np.transpose(np.matrix([words100[i-1,:]for i in stim_labels ]))
-#             brains = np.matrix(np.transpose(bregman.audiodb.adb.read('brain_features/'+subject+feat_expr+'.brain')))
-#             W_best,V_best,pre_train,pre_test,dist_train, dist_test,stop_train_pre,best_test_dist=WARP_opt_weighted3(Xs_train,Ys_train,k,C,D,gamma=gamma,Xs_test=None,Ys_test=None,stop_pre=None)
-
+    for D in Ds:
+        for lr in learning_rates:
+            # load brain data
+            stim_labels = np.genfromtxt('stimuli_labels.txt')
+            stim_labels = np.ravel([np.tile(i,(1,3)) for i in stim_labels])
+            words100 = np.genfromtxt(tag_feat_file)
+            words = np.transpose(np.matrix([words100[i-1,:]for i in stim_labels ]))
+            brains = np.matrix(np.transpose(bregman.audiodb.adb.read('brain_features/'+subject+feat_expr+'.brain')))
+            Ws, Vs,all_dist_test,all_dist_train,all_pre_test,all_pre_train,total_time,avg_best_dist=learn_25_models(subject)
 
 def main():
     #subjects = ['1mar11sj','1mar11yw','5mar11ad','5mar11at','8mar11am','8mar11ec','9mar11ab','9mar11jd','16mar11hy','16mar11mg','16mar11mh','16mar11sg','17mar11sw','26feb11kj','26feb11zi']
